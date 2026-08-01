@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>DHT22 Live Dashboard</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/paho-mqtt/1.0.1/mqttws31.min.js"></script>
+  <style>
+    body {
+      font-family: sans-serif;
+      background: #f0f4f8;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 40px;
+    }
+    h1 { color: #333; }
+    .cards { display: flex; gap: 30px; margin-top: 30px; }
+    .card {
+      background: white;
+      border-radius: 16px;
+      padding: 40px 50px;
+      text-align: center;
+      box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+      min-width: 160px;
+    }
+    .card .label { font-size: 1rem; color: #888; margin-bottom: 10px; }
+    .card .value { font-size: 3rem; font-weight: bold; color: #2d6a4f; }
+    .card .unit  { font-size: 1.2rem; color: #555; }
+    #status { margin-top: 20px; font-size: 0.9rem; color: #999; }
+  </style>
+</head>
+<body>
+  <h1>🌡️ Home Sensor Dashboard</h1>
+  <div class="cards">
+    <div class="card">
+      <div class="label">Temperature</div>
+      <div class="value" id="temp">--</div>
+      <div class="unit">°C</div>
+    </div>
+    <div class="card">
+      <div class="label">Humidity</div>
+      <div class="value" id="humi">--</div>
+      <div class="unit">%</div>
+    </div>
+  </div>
+  <div id="status">Connecting…</div>
+
+  <script>
+    // ← Only edit these 4 lines
+    const host = "3aa637f07b824acc89b86a181f4bf08b.s1.eu.hivemq.cloud"; // already correct
+    const port = 8884;                        // already correct
+    const user = "dashboard-reader";          // ← your dashboard username
+    const pass = "dashboard"; 
+
+    const client = new Paho.MQTT.Client(host, port, "/mqtt", "dashboard-" + Math.random());
+
+    client.onConnectionLost = () => {
+      document.getElementById("status").textContent = "⚠️ Connection lost. Reconnecting…";
+      setTimeout(connect, 3000);
+    };
+
+    client.onMessageArrived = (msg) => {
+      const val = parseFloat(msg.payloadString).toFixed(1);
+      if (msg.destinationName.includes("temperature"))
+        document.getElementById("temp").textContent = val;
+      else
+        document.getElementById("humi").textContent = val;
+    };
+
+    function connect() {
+      client.connect({
+        useSSL: true,
+        userName: user,
+        password: pass,
+        onSuccess: () => {
+          document.getElementById("status").textContent = "✅ Live — updates every 10s";
+          client.subscribe("home/dht22/#");
+        },
+        onFailure: (e) => {
+          document.getElementById("status").textContent = "❌ Failed: " + e.errorMessage;
+          setTimeout(connect, 5000);
+        }
+      });
+    }
+
+    connect();
+  </script>
+</body>
+</html>
