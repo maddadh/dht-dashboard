@@ -97,7 +97,7 @@
 </head>
 <body>
 
-  <h1>🌡 Environment Monitor </h1>
+  <h1>🌡 Wemos DHT22 Live Dashboard</h1>
 
   <div class="cards">
     <div class="card temp">
@@ -186,7 +186,7 @@
       }
 
       updatedEl.textContent = "Last updated: " + new Date().toLocaleTimeString();
-      log("Message received on " + topic + " -> " + raw);
+      log("Message received on " + topic);
     };
 
     function connect() {
