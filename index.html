@@ -123,14 +123,10 @@
 
     let retryCount = 0;
 
-    function log(msg) {
-      console.log("[MQTT]", msg);
-    }
-
     const client = new Paho.Client(BROKER_HOST, Number(BROKER_PORT), "/mqtt", CLIENT_ID);
 
     client.onConnectionLost = (res) => {
-      log("Connection lost: " + res.errorMessage);
+      console.warn("[MQTT] Connection lost:", res.errorMessage);
       setStatus("disconnected", "Disconnected — retrying…");
       setTimeout(connect, 5000);
     };
@@ -158,7 +154,7 @@
       }
 
       if (!Number.isFinite(value)) {
-        log("Bad payload received on " + topic);
+        console.warn("[MQTT] Bad payload received on", topic);
         return;
       }
 
@@ -171,13 +167,12 @@
       }
 
       updatedEl.textContent = "Last updated: " + new Date().toLocaleTimeString();
-      log("Message received on " + topic);
     };
 
     function connect() {
       retryCount++;
       setStatus("connecting", "Connecting… (attempt " + retryCount + ")");
-      log("Connecting to " + BROKER_HOST + ":" + BROKER_PORT + " as " + MQTT_USER);
+      console.log("[MQTT] Connecting to", BROKER_HOST + ":" + BROKER_PORT, "as", MQTT_USER);
 
       client.connect({
         useSSL:            true,
@@ -187,7 +182,7 @@
         cleanSession:      true,
         onSuccess:         onConnect,
         onFailure: (err) => {
-          log("FAILED — code: " + err.errorCode + " | " + err.errorMessage);
+          console.error("[MQTT] Connect failed:", err.errorCode, err.errorMessage);
           setStatus("disconnected", "Connection failed (code " + err.errorCode + ") — retrying…");
           setTimeout(connect, 5000);
         }
@@ -197,15 +192,15 @@
     function onConnect() {
       retryCount = 0;
       setStatus("connected", "✅ Connected");
-      log("Connected! Subscribing to topics…");
+      console.log("[MQTT] Connected. Subscribing to topics...");
 
       client.subscribe(TOPIC_TEMP, {
-        onSuccess: () => log("Subscribed to " + TOPIC_TEMP),
-        onFailure: (e) => log("Subscribe failed: " + e.errorMessage)
+        onSuccess: () => console.log("[MQTT] Subscribed to", TOPIC_TEMP),
+        onFailure: (e) => console.error("[MQTT] Subscribe failed:", e.errorMessage)
       });
       client.subscribe(TOPIC_HUM, {
-        onSuccess: () => log("Subscribed to " + TOPIC_HUM),
-        onFailure: (e) => log("Subscribe failed: " + e.errorMessage)
+        onSuccess: () => console.log("[MQTT] Subscribed to", TOPIC_HUM),
+        onFailure: (e) => console.error("[MQTT] Subscribe failed:", e.errorMessage)
       });
     }
 
