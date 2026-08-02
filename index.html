@@ -1,87 +1,170 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>DHT22 Live Dashboard</title>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/paho-mqtt/1.0.1/mqttws31.min.js"></script>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Wemos DHT22 Dashboard</title>
+
+  <!-- Paho MQTT JS client -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/paho-mqtt/1.1.0/paho-mqtt.min.js"></script>
+
   <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
     body {
-      font-family: sans-serif;
-      background: #f0f4f8;
+      font-family: 'Segoe UI', sans-serif;
+      background: #0f172a;
+      color: #e2e8f0;
       display: flex;
       flex-direction: column;
       align-items: center;
-      padding: 40px;
+      justify-content: center;
+      min-height: 100vh;
+      gap: 24px;
     }
-    h1 { color: #333; }
-    .cards { display: flex; gap: 30px; margin-top: 30px; }
+
+    h1 { font-size: 1.4rem; color: #94a3b8; letter-spacing: 0.05em; }
+
+    .cards {
+      display: flex;
+      gap: 24px;
+      flex-wrap: wrap;
+      justify-content: center;
+    }
+
     .card {
-      background: white;
+      background: #1e293b;
       border-radius: 16px;
-      padding: 40px 50px;
+      padding: 36px 48px;
       text-align: center;
-      box-shadow: 0 4px 15px rgba(0,0,0,0.1);
-      min-width: 160px;
+      min-width: 180px;
+      box-shadow: 0 4px 24px rgba(0,0,0,0.4);
     }
-    .card .label { font-size: 1rem; color: #888; margin-bottom: 10px; }
-    .card .value { font-size: 3rem; font-weight: bold; color: #2d6a4f; }
-    .card .unit  { font-size: 1.2rem; color: #555; }
-    #status { margin-top: 20px; font-size: 0.9rem; color: #999; }
+
+    .card .label {
+      font-size: 0.85rem;
+      color: #64748b;
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      margin-bottom: 12px;
+    }
+
+    .card .value {
+      font-size: 3rem;
+      font-weight: 700;
+      line-height: 1;
+    }
+
+    .card .unit {
+      font-size: 1.1rem;
+      color: #94a3b8;
+      margin-top: 6px;
+    }
+
+    .temp .value { color: #f97316; }
+    .hum  .value { color: #38bdf8; }
+
+    #status {
+      font-size: 0.8rem;
+      padding: 6px 16px;
+      border-radius: 99px;
+      background: #1e293b;
+    }
+
+    #status.connected    { color: #4ade80; border: 1px solid #4ade80; }
+    #status.disconnected { color: #f87171; border: 1px solid #f87171; }
+    #status.connecting   { color: #fbbf24; border: 1px solid #fbbf24; }
+
+    #last-updated {
+      font-size: 0.75rem;
+      color: #475569;
+    }
   </style>
 </head>
 <body>
-  <h1>🌡️ Environment Monitor </h1>
+
+  <h1>🌡 Wemos DHT22 Live Dashboard</h1>
+
   <div class="cards">
-    <div class="card">
+    <div class="card temp">
       <div class="label">Temperature</div>
-      <div class="value" id="temp">--</div>
-      <div class="unit">°F</div>
+      <div class="value" id="temp-val">--</div>
+      <div class="unit">°C</div>
     </div>
-    <div class="card">
+    <div class="card hum">
       <div class="label">Humidity</div>
-      <div class="value" id="humi">--</div>
+      <div class="value" id="hum-val">--</div>
       <div class="unit">%</div>
     </div>
   </div>
-  <div id="status">Connecting…</div>
+
+  <div id="status" class="connecting">Connecting…</div>
+  <div id="last-updated">Waiting for data…</div>
 
   <script>
-    // ← Only edit these 4 lines
-    const host = "bcbe682fd36f4584aad0b7f0913894e1.s1.eu.hivemq.cloud"; // already correct
-    const port = 8884;                        // already correct
-    const user = "dashboard";          // ← your dashboard username
-    const pass = "dashboard"; 
+    // ── Configuration ────────────────────────────────────
+    const BROKER_HOST = "bcbe682fd36f4584aad0b7f0913894e1.s1.eu.hivemq.cloud";
+    const BROKER_PORT = 8884;                     // WebSocket TLS port
+    const MQTT_USER   = "dashboard";     // same credential as the D1 Mini
+    const MQTT_PASS   = "dashboard";
+    const CLIENT_ID   = "dashboard-" + Math.random().toString(16).slice(2, 8);
 
-    const client = new Paho.MQTT.Client(host, port, "/mqtt", "dashboard-" + Math.random());
+    const TOPIC_TEMP  = "wemo-device/dht22/temperature";
+    const TOPIC_HUM   = "wemo-device/dht22/humidity";
+    // ─────────────────────────────────────────────────────
 
-    client.onConnectionLost = () => {
-      document.getElementById("status").textContent = "⚠️ Connection lost. Reconnecting…";
-      setTimeout(connect, 3000);
+    const tempEl      = document.getElementById("temp-val");
+    const humEl       = document.getElementById("hum-val");
+    const statusEl    = document.getElementById("status");
+    const updatedEl   = document.getElementById("last-updated");
+
+    const client = new Paho.Client(BROKER_HOST, BROKER_PORT, "/mqtt", CLIENT_ID);
+
+    client.onConnectionLost = (res) => {
+      console.warn("Connection lost:", res.errorMessage);
+      setStatus("disconnected", "Disconnected — retrying…");
+      setTimeout(connect, 5000);
     };
 
-    client.onMessageArrived = (msg) => {
-      const val = parseFloat(msg.payloadString).toFixed(1);
-      if (msg.destinationName.includes("temperature"))
-        document.getElementById("temp").textContent = val;
-      else
-        document.getElementById("humi").textContent = val;
+    client.onMessageArrived = (message) => {
+      const topic   = message.destinationName;
+      const payload = JSON.parse(message.payloadString);
+
+      if (topic === TOPIC_TEMP && payload.temp !== undefined) {
+        tempEl.textContent = payload.temp.toFixed(1);
+      }
+      if (topic === TOPIC_HUM && payload.hum !== undefined) {
+        humEl.textContent = payload.hum.toFixed(1);
+      }
+
+      updatedEl.textContent = "Last updated: " + new Date().toLocaleTimeString();
     };
 
     function connect() {
+      setStatus("connecting", "Connecting…");
       client.connect({
-        useSSL: true,
-        userName: user,
-        password: pass,
-        onSuccess: () => {
-          document.getElementById("status").textContent = "✅ Live — updates every 10s";
-          client.subscribe("home/dht22/#");
-        },
-        onFailure: (e) => {
-          document.getElementById("status").textContent = "❌ Failed: " + e.errorMessage;
+        useSSL:    true,
+        userName:  MQTT_USER,
+        password:  MQTT_PASS,
+        onSuccess: onConnect,
+        onFailure: (err) => {
+          console.error("Connect failed:", err.errorMessage);
+          setStatus("disconnected", "Connection failed — retrying…");
           setTimeout(connect, 5000);
         }
       });
+    }
+
+    function onConnect() {
+      setStatus("connected", "Connected");
+      client.subscribe(TOPIC_TEMP);
+      client.subscribe(TOPIC_HUM);
+      console.log("Subscribed to", TOPIC_TEMP, "and", TOPIC_HUM);
+    }
+
+    function setStatus(cls, text) {
+      statusEl.className = cls;
+      statusEl.textContent = text;
     }
 
     connect();
