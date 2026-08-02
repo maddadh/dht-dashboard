@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>Wemos DHT22 Dashboard</title>
 
+  <!-- Paho MQTT JS client -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/paho-mqtt/1.1.0/paho-mqtt.min.js"></script>
 
   <style>
@@ -78,18 +79,6 @@
       font-size: 0.75rem;
       color: #475569;
     }
-
-    #debug {
-      font-size: 0.7rem;
-      color: #475569;
-      font-family: monospace;
-      background: #1e293b;
-      padding: 8px 16px;
-      border-radius: 8px;
-      max-width: 480px;
-      text-align: center;
-      word-break: break-all;
-    }
   </style>
 </head>
 <body>
@@ -111,97 +100,88 @@
 
   <div id="status" class="connecting">Connecting…</div>
   <div id="last-updated">Waiting for data…</div>
-  <div id="debug">Initialising…</div>
 
   <script>
-    // ── ⚠️ Fill in these two values ──────────────────────
-    const MQTT_USER  = "dashboard";
-    const MQTT_PASS  = "dashboard";
-    // ─────────────────────────────────────────────────────
-
-    const BROKER_HOST = "3dc8f5d766d54fe589cd5a6fa49fa47c.s1.eu.hivemq.cloud";
-    const BROKER_PORT = 8884;   // if connection fails, try 8083
+    // ── Configuration ────────────────────────────────────
+    const BROKER_HOST = "bcbe682fd36f4584aad0b7f0913894e1.s1.eu.hivemq.cloud";
+    const BROKER_PORT = 8884;                     // WebSocket TLS port
+    const MQTT_USER   = "YOUR_MQTT_USERNAME";     // same credential as the D1 Mini
+    const MQTT_PASS   = "YOUR_MQTT_PASSWORD";
     const CLIENT_ID   = "dashboard-" + Math.random().toString(16).slice(2, 8);
 
     const TOPIC_TEMP  = "wemo-device/dht22/temperature";
     const TOPIC_HUM   = "wemo-device/dht22/humidity";
+    // ─────────────────────────────────────────────────────
 
-    const tempEl    = document.getElementById("temp-val");
-    const humEl     = document.getElementById("hum-val");
-    const statusEl  = document.getElementById("status");
-    const updatedEl = document.getElementById("last-updated");
-    const debugEl   = document.getElementById("debug");
+    const tempEl      = document.getElementById("temp-val");
+    const humEl       = document.getElementById("hum-val");
+    const statusEl    = document.getElementById("status");
+    const updatedEl   = document.getElementById("last-updated");
 
-    let retryCount = 0;
-
-    function log(msg) {
-      console.log("[MQTT]", msg);
-      debugEl.textContent = msg;
-    }
-
-    const client = new Paho.Client(BROKER_HOST, Number(BROKER_PORT), "/mqtt", CLIENT_ID);
+    const client = new Paho.Client(BROKER_HOST, BROKER_PORT, "/mqtt", CLIENT_ID);
 
     client.onConnectionLost = (res) => {
-      log("Connection lost: " + res.errorMessage);
+      console.warn("Connection lost:", res.errorMessage);
       setStatus("disconnected", "Disconnected — retrying…");
       setTimeout(connect, 5000);
     };
 
     client.onMessageArrived = (message) => {
       const topic = message.destinationName;
-      let payload;
+      const raw = String(message.payloadString || "").trim();
+      let value;
 
       try {
-        payload = JSON.parse(message.payloadString);
-      } catch(e) {
-        log("Bad payload on " + topic + ": " + message.payloadString);
+        const parsed = JSON.parse(raw);
+        if (typeof parsed === "number") {
+          value = parsed;
+        } else if (typeof parsed === "string") {
+          value = Number(parsed);
+        } else if (parsed && typeof parsed === "object") {
+          // Support multiple common payload shapes.
+          if (topic === TOPIC_TEMP) value = Number(parsed.temp ?? parsed.temperature ?? parsed.value);
+          if (topic === TOPIC_HUM) value = Number(parsed.hum ?? parsed.humi ?? parsed.humidity ?? parsed.value);
+        }
+      } catch {
+        // Non-JSON payloads are expected for many embedded publishers.
+        value = Number(raw);
+      }
+
+      if (!Number.isFinite(value)) {
+        console.warn("Ignoring invalid payload", { topic, raw });
         return;
       }
 
-      if (topic === TOPIC_TEMP && payload.temp !== undefined) {
-        tempEl.textContent = payload.temp.toFixed(1);
+      if (topic === TOPIC_TEMP) {
+        tempEl.textContent = value.toFixed(1);
       }
-      if (topic === TOPIC_HUM && payload.hum !== undefined) {
-        humEl.textContent = payload.hum.toFixed(1);
+      if (topic === TOPIC_HUM) {
+        humEl.textContent = value.toFixed(1);
       }
 
       updatedEl.textContent = "Last updated: " + new Date().toLocaleTimeString();
-      log("Message received on " + topic + " → " + message.payloadString);
     };
 
     function connect() {
-      retryCount++;
-      setStatus("connecting", "Connecting… (attempt " + retryCount + ")");
-      log("Connecting to " + BROKER_HOST + ":" + BROKER_PORT + " as " + MQTT_USER);
-
+      setStatus("connecting", "Connecting…");
       client.connect({
-        useSSL:            true,
-        userName:          MQTT_USER,
-        password:          MQTT_PASS,
-        keepAliveInterval: 60,
-        cleanSession:      true,
-        onSuccess:         onConnect,
+        useSSL:    true,
+        userName:  MQTT_USER,
+        password:  MQTT_PASS,
+        onSuccess: onConnect,
         onFailure: (err) => {
-          log("FAILED — code: " + err.errorCode + " | " + err.errorMessage);
-          setStatus("disconnected", "Connection failed (code " + err.errorCode + ") — retrying…");
+          console.error("Connect failed:", err.errorMessage);
+          setStatus("disconnected", "Connection failed — retrying…");
           setTimeout(connect, 5000);
         }
       });
     }
 
     function onConnect() {
-      retryCount = 0;
-      setStatus("connected", "✅ Connected");
-      log("Connected! Subscribing to topics…");
-
-      client.subscribe(TOPIC_TEMP, {
-        onSuccess: () => log("Subscribed to " + TOPIC_TEMP),
-        onFailure: (e) => log("Subscribe failed: " + e.errorMessage)
-      });
-      client.subscribe(TOPIC_HUM, {
-        onSuccess: () => log("Subscribed to " + TOPIC_HUM),
-        onFailure: (e) => log("Subscribe failed: " + e.errorMessage)
-      });
+      setStatus("connected", "Connected");
+      client.subscribe(TOPIC_TEMP);
+      client.subscribe(TOPIC_HUM);
+      console.log("Subscribed to", TOPIC_TEMP, "and", TOPIC_HUM);
     }
 
     function setStatus(cls, text) {
