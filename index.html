@@ -12,8 +12,8 @@
 
     body {
       font-family: 'Segoe UI', sans-serif;
-      background: #0f172a;
-      color: #e2e8f0;
+      background: linear-gradient(135deg, #f8fafc 0%, #eef2ff 100%);
+      color: #0f172a;
       display: flex;
       flex-direction: column;
       align-items: center;
@@ -22,7 +22,7 @@
       gap: 24px;
     }
 
-    h1 { font-size: 1.4rem; color: #94a3b8; letter-spacing: 0.05em; }
+    h1 { font-size: 1.4rem; color: #475569; letter-spacing: 0.05em; }
 
     .cards {
       display: flex;
@@ -32,12 +32,13 @@
     }
 
     .card {
-      background: #1e293b;
+      background: #ffffff;
+      border: 1px solid #e2e8f0;
       border-radius: 16px;
       padding: 36px 48px;
       text-align: center;
       min-width: 180px;
-      box-shadow: 0 4px 24px rgba(0,0,0,0.4);
+      box-shadow: 0 8px 24px rgba(15, 23, 42, 0.08);
     }
 
     .card .label {
@@ -60,14 +61,15 @@
       margin-top: 6px;
     }
 
-    .temp .value { color: #f97316; }
-    .hum  .value { color: #38bdf8; }
+    .temp .value { color: #dc2626; }
+    .hum  .value { color: #2563eb; }
 
     #status {
       font-size: 0.8rem;
       padding: 6px 16px;
       border-radius: 99px;
-      background: #1e293b;
+      background: #f8fafc;
+      border: 1px solid #e2e8f0;
     }
 
     #status.connected    { color: #4ade80; border: 1px solid #4ade80; }
@@ -76,14 +78,15 @@
 
     #last-updated {
       font-size: 0.75rem;
-      color: #475569;
+      color: #64748b;
     }
 
     #debug {
       font-size: 0.7rem;
       color: #475569;
       font-family: monospace;
-      background: #1e293b;
+      background: #f8fafc;
+      border: 1px solid #e2e8f0;
       padding: 8px 16px;
       border-radius: 8px;
       max-width: 480px;
@@ -100,7 +103,7 @@
     <div class="card temp">
       <div class="label">Temperature</div>
       <div class="value" id="temp-val">--</div>
-      <div class="unit">°C</div>
+      <div class="unit">°F</div>
     </div>
     <div class="card hum">
       <div class="label">Humidity</div>
@@ -175,7 +178,8 @@
       }
 
       if (isTempTopic) {
-        tempEl.textContent = value.toFixed(1);
+        const tempF = (value * 9) / 5 + 32;
+        tempEl.textContent = tempF.toFixed(1);
       }
       if (isHumTopic) {
         humEl.textContent = value.toFixed(1);
