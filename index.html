@@ -2,288 +2,30 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>Environment Monitor</title>
-
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/paho-mqtt/1.1.0/paho-mqtt.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns"></script>
-
-  <style>
-    * { box-sizing: border-box; margin: 0; padding: 0; }
-
-    body {
-      font-family: 'Segoe UI', sans-serif;
-      background: linear-gradient(135deg, #f8fafc 0%, #eef2ff 100%);
-      color: #0f172a;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      min-height: 100vh;
-      gap: 24px;
-      padding: 32px 16px;
-    }
-
-    h1 { font-size: 1.4rem; color: #475569; letter-spacing: 0.05em; }
-
-    .cards {
-      display: flex;
-      gap: 24px;
-      flex-wrap: wrap;
-      justify-content: center;
-    }
-
-    .card {
-      background: #ffffff;
-      border: 1px solid #e2e8f0;
-      border-radius: 16px;
-      padding: 36px 48px;
-      text-align: center;
-      min-width: 180px;
-      box-shadow: 0 8px 24px rgba(15, 23, 42, 0.08);
-    }
-
-    .card .label {
-      font-size: 0.85rem;
-      color: #64748b;
-      text-transform: uppercase;
-      letter-spacing: 0.1em;
-      margin-bottom: 12px;
-    }
-
-    .card .value {
-      font-size: 3rem;
-      font-weight: 700;
-      line-height: 1;
-    }
-
-    .card .unit {
-      font-size: 1.1rem;
-      color: #94a3b8;
-      margin-top: 6px;
-    }
-
-    .temp .value { color: #dc2626; }
-    .hum  .value { color: #2563eb; }
-
-    #status {
-      font-size: 0.8rem;
-      padding: 6px 16px;
-      border-radius: 99px;
-      background: #f8fafc;
-      border: 1px solid #e2e8f0;
-    }
-
-    #status.connected    { color: #4ade80; border: 1px solid #4ade80; }
-    #status.disconnected { color: #f87171; border: 1px solid #f87171; }
-    #status.connecting   { color: #fbbf24; border: 1px solid #fbbf24; }
-
-    #last-updated {
-      font-size: 0.75rem;
-      color: #64748b;
-    }
-
-    .chart-container {
-      background: #ffffff;
-      border: 1px solid #e2e8f0;
-      border-radius: 16px;
-      padding: 24px;
-      width: 100%;
-      max-width: 900px;
-      box-shadow: 0 8px 24px rgba(15, 23, 42, 0.08);
-    }
-
-    .chart-title {
-      font-size: 0.9rem;
-      color: #475569;
-      text-transform: uppercase;
-      letter-spacing: 0.08em;
-      margin-bottom: 16px;
-    }
-
-    .chart-controls {
-      display: flex;
-      gap: 8px;
-      margin-bottom: 16px;
-      flex-wrap: wrap;
-    }
-
-    .chart-controls button {
-      padding: 4px 14px;
-      border-radius: 99px;
-      border: 1px solid #e2e8f0;
-      background: #f8fafc;
-      color: #475569;
-      font-size: 0.78rem;
-      cursor: pointer;
-      transition: all 0.15s;
-    }
-
-    .chart-controls button.active,
-    .chart-controls button:hover {
-      background: #6366f1;
-      color: #fff;
-      border-color: #6366f1;
-    }
-  </style>
+  <title>MQTT Test</title>
 </head>
 <body>
-
-  <h1>🌡 Environment Monitor</h1>
-
-  <div class="cards">
-    <div class="card temp">
-      <div class="label">Temperature</div>
-      <div class="value" id="temp-val">--</div>
-      <div class="unit">°F</div>
-    </div>
-    <div class="card hum">
-      <div class="label">Humidity</div>
-      <div class="value" id="hum-val">--</div>
-      <div class="unit">%</div>
-    </div>
-  </div>
-
-  <div id="status" class="connecting">Connecting…</div>
-  <div id="last-updated">Waiting for data…</div>
-
-  <div class="chart-container">
-    <div class="chart-title">📈 History</div>
-    <div class="chart-controls">
-      <button onclick="setWindow(60)"    id="btn-1h" >1 h</button>
-      <button onclick="setWindow(1440)"  id="btn-24h">24 h</button>
-      <button onclick="setWindow(10080)" id="btn-7d" >7 d</button>
-      <button onclick="setWindow(43200)" id="btn-30d" class="active">30 d</button>
-    </div>
-    <canvas id="historyChart" height="120"></canvas>
-  </div>
+  <h1>MQTT Test</h1>
+  <div id="status">Loading...</div>
 
   <script>
-    // ── Configuration ─────────────────────────────────────
-    const MQTT_USER   = "dashboard";
-    const MQTT_PASS   = "dashboard";
-    const BROKER_HOST = "3dc8f5d766d54fe589cd5a6fa49fa47c.s1.eu.hivemq.cloud";
-    const BROKER_PORT = 8884;
-    const CLIENT_ID   = "dashboard-" + Math.random().toString(16).slice(2, 8);
-    const TOPIC_TEMP  = "wemo-device/dht22/temperature";
-    const TOPIC_HUM   = "wemo-device/dht22/humidity";
-    // ──────────────────────────────────────────────────────
+    console.log("Script started");
+    document.getElementById("status").textContent = "Script running";
+  </script>
 
-    const tempEl    = document.getElementById("temp-val");
-    const humEl     = document.getElementById("hum-val");
-    const statusEl  = document.getElementById("status");
-    const updatedEl = document.getElementById("last-updated");
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/paho-mqtt/1.1.0/paho-mqtt.min.js"
+    onload="console.log('✅ Paho loaded')"
+    onerror="console.error('❌ Paho FAILED to load')">
+  </script>
 
-    const MAX_POINTS  = 43_200;
-    const tempHistory = [];
-    const humHistory  = [];
-    let windowMinutes = 43200;
-    let retryCount    = 0;
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"
+    onload="console.log('✅ Chart.js loaded')"
+    onerror="console.error('❌ Chart.js FAILED to load')">
+  </script>
 
-    // ── Window selector ──
-    function setWindow(mins) {
-      windowMinutes = mins;
-      document.querySelectorAll(".chart-controls button").forEach(b => b.classList.remove("active"));
-      const ids = { 60: "btn-1h", 1440: "btn-24h", 10080: "btn-7d", 43200: "btn-30d" };
-      document.getElementById(ids[mins])?.classList.add("active");
-      refreshChart();
-    }
-
-    function visibleSlice(arr) {
-      const cutoff = new Date(Date.now() - windowMinutes * 60 * 1000);
-      return arr.filter(p => p.x >= cutoff);
-    }
-
-    // ── Chart.js ──
-    const ctx = document.getElementById("historyChart").getContext("2d");
-    const chart = new Chart(ctx, {
-      type: "line",
-      data: {
-        datasets: [
-          {
-            label: "Temperature (°F)",
-            data: [],
-            borderColor: "#dc2626",
-            backgroundColor: "rgba(220,38,38,0.08)",
-            borderWidth: 2,
-            pointRadius: 0,
-            tension: 0.3,
-            yAxisID: "yTemp",
-            fill: true,
-          },
-          {
-            label: "Humidity (%)",
-            data: [],
-            borderColor: "#2563eb",
-            backgroundColor: "rgba(37,99,235,0.08)",
-            borderWidth: 2,
-            pointRadius: 0,
-            tension: 0.3,
-            yAxisID: "yHum",
-            fill: true,
-          }
-        ]
-      },
-      options: {
-        animation: false,
-        interaction: { mode: "index", intersect: false },
-        plugins: {
-          legend: { position: "top" },
-          tooltip: {
-            callbacks: {
-              label: c => ` ${c.dataset.label}: ${c.parsed.y.toFixed(1)}${c.datasetIndex === 0 ? "°F" : "%"}`
-            }
-          }
-        },
-        scales: {
-          x: {
-            type: "time",
-            time: { tooltipFormat: "MMM d, HH:mm" },
-            ticks: { maxTicksLimit: 8, color: "#94a3b8" },
-            grid: { color: "#f1f5f9" }
-          },
-          yTemp: {
-            position: "left",
-            title: { display: true, text: "°F", color: "#dc2626" },
-            ticks: { color: "#dc2626" },
-            grid: { color: "#f1f5f9" }
-          },
-          yHum: {
-            position: "right",
-            title: { display: true, text: "%", color: "#2563eb" },
-            ticks: { color: "#2563eb" },
-            grid: { drawOnChartArea: false }
-          }
-        }
-      }
-    });
-
-    function refreshChart() {
-      chart.data.datasets[0].data = visibleSlice(tempHistory);
-      chart.data.datasets[1].data = visibleSlice(humHistory);
-      chart.update("none");
-    }
-
-    function pushPoint(arr, y) {
-      arr.push({ x: new Date(), y });
-      if (arr.length > MAX_POINTS) arr.shift();
-    }
-
-    // ── CSV loader ──
-    async function loadCSV() {
-      try {
-        const res   = await fetch("data.csv");
-        const text  = await res.text();
-        const lines = text.trim().split("\n").slice(1);
-        for (const line of lines) {
-          const [ts, tempF, hum] = line.split(",");
-          if (!ts || !tempF || !hum) continue;
-          const t = parseFloat(tempF);
-          const h = parseFloat(hum);
-          if (Number.isFinite(t)) tempHistory.push({ x: new Date(ts), y: t });
-          if (Number.isFinite(h)) humHistory.push({  x: new Date(ts), y: h });
-        }
-        refreshChart();
-        console.log(`[CSV] Loaded ${tempHistory.length} historical points`);
-      } catch (e) {
-        console.warn("[CSV] Could
+  <script>
+    console.log("All scripts done");
+    document.getElementById("status").textContent = "All scripts loaded — check console";
+  </script>
+</body>
+</html>
