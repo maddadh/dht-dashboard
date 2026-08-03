@@ -209,7 +209,32 @@
       statusEl.textContent = text;
     }
 
-    connect();
+    // ── Load historical CSV on page start ──────────────────
+async function loadCSV() {
+  try {
+    const res  = await fetch("data.csv");
+    const text = await res.text();
+    const lines = text.trim().split("\n").slice(1); // skip header
+
+    for (const line of lines) {
+      const [ts, tempF, hum] = line.split(",");
+      if (!ts || !tempF || !hum) continue;
+      const t = parseFloat(tempF);
+      const h = parseFloat(hum);
+      if (Number.isFinite(t)) tempHistory.push({ x: new Date(ts), y: t });
+      if (Number.isFinite(h)) humHistory.push({  x: new Date(ts), y: h });
+    }
+
+    refreshChart();
+    console.log(`[CSV] Loaded ${tempHistory.length} historical points`);
+  } catch (e) {
+    console.warn("[CSV] Could not load data.csv:", e);
+  }
+}
+
+// call both
+loadCSV();
+connect();
   </script>
 </body>
 </html>
