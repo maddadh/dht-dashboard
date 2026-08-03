@@ -1,0 +1,44 @@
+name: Collect MQTT Readings
+
+on:
+  schedule:
+    - cron: "*/15 * * * *"   # every 15 minutes — change to */5 for max resolution
+  workflow_dispatch:           # lets you trigger manually too
+
+jobs:
+  collect:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write          # needed to commit the CSV back
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install paho-mqtt
+        run: pip install paho-mqtt
+
+      - name: Fetch reading and append to CSV
+        env:
+          MQTT_HOST: "3dc8f5d766d54fe589cd5a6fa49fa47c.s1.eu.hivemq.cloud"
+          MQTT_PORT: "8883"
+          MQTT_USER: ${{ secrets.MQTT_USER }}
+          MQTT_PASS: ${{ secrets.MQTT_PASS }}
+          TOPIC_TEMP: "wemo-device/dht22/temperature"
+          TOPIC_HUM:  "wemo-device/dht22/humidity"
+        run: python collect.py
+
+      - name: Prune CSV to last 30 days
+        run: python prune.py
+
+      - name: Commit updated CSV
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add data.csv
+          git diff --cached --quiet || git commit -m "chore: update sensor readings"
+          git push
