@@ -6,6 +6,8 @@
   <title>Environment Monitor</title>
 
   <script src="https://cdnjs.cloudflare.com/ajax/libs/paho-mqtt/1.1.0/paho-mqtt.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns"></script>
 
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -17,9 +19,9 @@
       display: flex;
       flex-direction: column;
       align-items: center;
-      justify-content: center;
       min-height: 100vh;
       gap: 24px;
+      padding: 32px 16px;
     }
 
     h1 { font-size: 1.4rem; color: #475569; letter-spacing: 0.05em; }
@@ -81,6 +83,49 @@
       color: #64748b;
     }
 
+    /* ── Chart container ── */
+    .chart-container {
+      background: #ffffff;
+      border: 1px solid #e2e8f0;
+      border-radius: 16px;
+      padding: 24px;
+      width: 100%;
+      max-width: 900px;
+      box-shadow: 0 8px 24px rgba(15, 23, 42, 0.08);
+    }
+
+    .chart-title {
+      font-size: 0.9rem;
+      color: #475569;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      margin-bottom: 16px;
+    }
+
+    .chart-controls {
+      display: flex;
+      gap: 8px;
+      margin-bottom: 16px;
+      flex-wrap: wrap;
+    }
+
+    .chart-controls button {
+      padding: 4px 14px;
+      border-radius: 99px;
+      border: 1px solid #e2e8f0;
+      background: #f8fafc;
+      color: #475569;
+      font-size: 0.78rem;
+      cursor: pointer;
+      transition: all 0.15s;
+    }
+
+    .chart-controls button.active,
+    .chart-controls button:hover {
+      background: #6366f1;
+      color: #fff;
+      border-color: #6366f1;
+    }
   </style>
 </head>
 <body>
@@ -103,6 +148,18 @@
   <div id="status" class="connecting">Connecting…</div>
   <div id="last-updated">Waiting for data…</div>
 
+  <!-- ── History Chart ── -->
+  <div class="chart-container">
+    <div class="chart-title">📈 History</div>
+    <div class="chart-controls">
+      <button onclick="setWindow(60)"    id="btn-1h" >1 h</button>
+      <button onclick="setWindow(1440)"  id="btn-24h">24 h</button>
+      <button onclick="setWindow(10080)" id="btn-7d" >7 d</button>
+      <button onclick="setWindow(43200)" id="btn-30d" class="active">30 d</button>
+    </div>
+    <canvas id="historyChart" height="120"></canvas>
+  </div>
+
   <script>
     // ── ⚠️ Fill in these two values ──────────────────────
     const MQTT_USER  = "dashboard";
@@ -110,7 +167,7 @@
     // ─────────────────────────────────────────────────────
 
     const BROKER_HOST = "3dc8f5d766d54fe589cd5a6fa49fa47c.s1.eu.hivemq.cloud";
-    const BROKER_PORT = 8884;   // if connection fails, try 8083
+    const BROKER_PORT = 8884;
     const CLIENT_ID   = "dashboard-" + Math.random().toString(16).slice(2, 8);
 
     const TOPIC_TEMP  = "wemo-device/dht22/temperature";
@@ -121,120 +178,17 @@
     const statusEl  = document.getElementById("status");
     const updatedEl = document.getElementById("last-updated");
 
-    let retryCount = 0;
+    // ── History storage (capped at 30 days of per-minute points ≈ 43,200) ──
+    const MAX_POINTS  = 43_200;
+    const tempHistory = [];   // { x: Date, y: number }
+    const humHistory  = [];
 
-    const client = new Paho.Client(BROKER_HOST, Number(BROKER_PORT), "/mqtt", CLIENT_ID);
+    // ── Window state (minutes) ──
+    let windowMinutes = 43200;
 
-    client.onConnectionLost = (res) => {
-      console.warn("[MQTT] Connection lost:", res.errorMessage);
-      setStatus("disconnected", "Disconnected — retrying…");
-      setTimeout(connect, 5000);
-    };
-
-    client.onMessageArrived = (message) => {
-      const topic = String(message.destinationName || "");
-      const topicKey = topic.trim().toLowerCase();
-      const isTempTopic = topicKey === TOPIC_TEMP.toLowerCase() || topicKey.endsWith("/temperature");
-      const isHumTopic = topicKey === TOPIC_HUM.toLowerCase() || topicKey.endsWith("/humidity") || topicKey.endsWith("/humi");
-      const raw = String(message.payloadString || "").trim();
-      let value;
-
-      try {
-        const parsed = JSON.parse(raw);
-        if (typeof parsed === "number") {
-          value = parsed;
-        } else if (typeof parsed === "string") {
-          value = Number(parsed);
-        } else if (parsed && typeof parsed === "object") {
-          if (isTempTopic) value = Number(parsed.temp ?? parsed.temperature ?? parsed.value);
-          if (isHumTopic) value = Number(parsed.hum ?? parsed.humi ?? parsed.humidity ?? parsed.value);
-        }
-      } catch {
-        value = Number(raw);
-      }
-
-      if (!Number.isFinite(value)) {
-        console.warn("[MQTT] Bad payload received on", topic);
-        return;
-      }
-
-      if (isTempTopic) {
-        const tempF = (value * 9) / 5 + 32;
-        tempEl.textContent = tempF.toFixed(1);
-      }
-      if (isHumTopic) {
-        humEl.textContent = value.toFixed(1);
-      }
-
-      updatedEl.textContent = "Last updated: " + new Date().toLocaleTimeString();
-    };
-
-    function connect() {
-      retryCount++;
-      setStatus("connecting", "Connecting… (attempt " + retryCount + ")");
-      console.log("[MQTT] Connecting to", BROKER_HOST + ":" + BROKER_PORT, "as", MQTT_USER);
-
-      client.connect({
-        useSSL:            true,
-        userName:          MQTT_USER,
-        password:          MQTT_PASS,
-        keepAliveInterval: 60,
-        cleanSession:      true,
-        onSuccess:         onConnect,
-        onFailure: (err) => {
-          console.error("[MQTT] Connect failed:", err.errorCode, err.errorMessage);
-          setStatus("disconnected", "Connection failed (code " + err.errorCode + ") — retrying…");
-          setTimeout(connect, 5000);
-        }
-      });
-    }
-
-    function onConnect() {
-      retryCount = 0;
-      setStatus("connected", "✅ Connected");
-      console.log("[MQTT] Connected. Subscribing to topics...");
-
-      client.subscribe(TOPIC_TEMP, {
-        onSuccess: () => console.log("[MQTT] Subscribed to", TOPIC_TEMP),
-        onFailure: (e) => console.error("[MQTT] Subscribe failed:", e.errorMessage)
-      });
-      client.subscribe(TOPIC_HUM, {
-        onSuccess: () => console.log("[MQTT] Subscribed to", TOPIC_HUM),
-        onFailure: (e) => console.error("[MQTT] Subscribe failed:", e.errorMessage)
-      });
-    }
-
-    function setStatus(cls, text) {
-      statusEl.className = cls;
-      statusEl.textContent = text;
-    }
-
-    // ── Load historical CSV on page start ──────────────────
-async function loadCSV() {
-  try {
-    const res  = await fetch("data.csv");
-    const text = await res.text();
-    const lines = text.trim().split("\n").slice(1); // skip header
-
-    for (const line of lines) {
-      const [ts, tempF, hum] = line.split(",");
-      if (!ts || !tempF || !hum) continue;
-      const t = parseFloat(tempF);
-      const h = parseFloat(hum);
-      if (Number.isFinite(t)) tempHistory.push({ x: new Date(ts), y: t });
-      if (Number.isFinite(h)) humHistory.push({  x: new Date(ts), y: h });
-    }
-
-    refreshChart();
-    console.log(`[CSV] Loaded ${tempHistory.length} historical points`);
-  } catch (e) {
-    console.warn("[CSV] Could not load data.csv:", e);
-  }
-}
-
-// call both
-loadCSV();
-connect();
-  </script>
-</body>
-</html>
+    function setWindow(mins) {
+      windowMinutes = mins;
+      document.querySelectorAll(".chart-controls button").forEach(b => b.classList.remove("active"));
+      const ids = { 60: "btn-1h", 1440: "btn-24h", 10080: "btn-7d", 43200: "btn-30d" };
+      document.getElementById(ids[mins])?.classList.add("active");
+      
