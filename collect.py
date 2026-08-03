@@ -40,8 +40,8 @@ client.on_message = on_message
 client.connect(HOST, PORT, keepalive=30)
 client.loop_start()
 
-# Wait up to 20 seconds for both readings
-for _ in range(40):
+# Wait up to 60 seconds for both readings
+for _ in range(120):
     if "temp_f" in readings and "hum" in readings:
         break
     time.sleep(0.5)
