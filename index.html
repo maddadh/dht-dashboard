@@ -83,7 +83,6 @@
       color: #64748b;
     }
 
-    /* ── Chart container ── */
     .chart-container {
       background: #ffffff;
       border: 1px solid #e2e8f0;
@@ -148,7 +147,6 @@
   <div id="status" class="connecting">Connecting…</div>
   <div id="last-updated">Waiting for data…</div>
 
-  <!-- ── History Chart ── -->
   <div class="chart-container">
     <div class="chart-title">📈 History</div>
     <div class="chart-controls">
@@ -161,34 +159,131 @@
   </div>
 
   <script>
-    // ── ⚠️ Fill in these two values ──────────────────────
-    const MQTT_USER  = "dashboard";
-    const MQTT_PASS  = "dashboard";
-    // ─────────────────────────────────────────────────────
-
+    // ── Configuration ─────────────────────────────────────
+    const MQTT_USER   = "dashboard";
+    const MQTT_PASS   = "dashboard";
     const BROKER_HOST = "3dc8f5d766d54fe589cd5a6fa49fa47c.s1.eu.hivemq.cloud";
     const BROKER_PORT = 8884;
     const CLIENT_ID   = "dashboard-" + Math.random().toString(16).slice(2, 8);
-
     const TOPIC_TEMP  = "wemo-device/dht22/temperature";
     const TOPIC_HUM   = "wemo-device/dht22/humidity";
+    // ──────────────────────────────────────────────────────
 
     const tempEl    = document.getElementById("temp-val");
     const humEl     = document.getElementById("hum-val");
     const statusEl  = document.getElementById("status");
     const updatedEl = document.getElementById("last-updated");
 
-    // ── History storage (capped at 30 days of per-minute points ≈ 43,200) ──
     const MAX_POINTS  = 43_200;
-    const tempHistory = [];   // { x: Date, y: number }
+    const tempHistory = [];
     const humHistory  = [];
-
-    // ── Window state (minutes) ──
     let windowMinutes = 43200;
+    let retryCount    = 0;
 
+    // ── Window selector ──
     function setWindow(mins) {
       windowMinutes = mins;
       document.querySelectorAll(".chart-controls button").forEach(b => b.classList.remove("active"));
       const ids = { 60: "btn-1h", 1440: "btn-24h", 10080: "btn-7d", 43200: "btn-30d" };
       document.getElementById(ids[mins])?.classList.add("active");
-      
+      refreshChart();
+    }
+
+    function visibleSlice(arr) {
+      const cutoff = new Date(Date.now() - windowMinutes * 60 * 1000);
+      return arr.filter(p => p.x >= cutoff);
+    }
+
+    // ── Chart.js ──
+    const ctx = document.getElementById("historyChart").getContext("2d");
+    const chart = new Chart(ctx, {
+      type: "line",
+      data: {
+        datasets: [
+          {
+            label: "Temperature (°F)",
+            data: [],
+            borderColor: "#dc2626",
+            backgroundColor: "rgba(220,38,38,0.08)",
+            borderWidth: 2,
+            pointRadius: 0,
+            tension: 0.3,
+            yAxisID: "yTemp",
+            fill: true,
+          },
+          {
+            label: "Humidity (%)",
+            data: [],
+            borderColor: "#2563eb",
+            backgroundColor: "rgba(37,99,235,0.08)",
+            borderWidth: 2,
+            pointRadius: 0,
+            tension: 0.3,
+            yAxisID: "yHum",
+            fill: true,
+          }
+        ]
+      },
+      options: {
+        animation: false,
+        interaction: { mode: "index", intersect: false },
+        plugins: {
+          legend: { position: "top" },
+          tooltip: {
+            callbacks: {
+              label: c => ` ${c.dataset.label}: ${c.parsed.y.toFixed(1)}${c.datasetIndex === 0 ? "°F" : "%"}`
+            }
+          }
+        },
+        scales: {
+          x: {
+            type: "time",
+            time: { tooltipFormat: "MMM d, HH:mm" },
+            ticks: { maxTicksLimit: 8, color: "#94a3b8" },
+            grid: { color: "#f1f5f9" }
+          },
+          yTemp: {
+            position: "left",
+            title: { display: true, text: "°F", color: "#dc2626" },
+            ticks: { color: "#dc2626" },
+            grid: { color: "#f1f5f9" }
+          },
+          yHum: {
+            position: "right",
+            title: { display: true, text: "%", color: "#2563eb" },
+            ticks: { color: "#2563eb" },
+            grid: { drawOnChartArea: false }
+          }
+        }
+      }
+    });
+
+    function refreshChart() {
+      chart.data.datasets[0].data = visibleSlice(tempHistory);
+      chart.data.datasets[1].data = visibleSlice(humHistory);
+      chart.update("none");
+    }
+
+    function pushPoint(arr, y) {
+      arr.push({ x: new Date(), y });
+      if (arr.length > MAX_POINTS) arr.shift();
+    }
+
+    // ── CSV loader ──
+    async function loadCSV() {
+      try {
+        const res   = await fetch("data.csv");
+        const text  = await res.text();
+        const lines = text.trim().split("\n").slice(1);
+        for (const line of lines) {
+          const [ts, tempF, hum] = line.split(",");
+          if (!ts || !tempF || !hum) continue;
+          const t = parseFloat(tempF);
+          const h = parseFloat(hum);
+          if (Number.isFinite(t)) tempHistory.push({ x: new Date(ts), y: t });
+          if (Number.isFinite(h)) humHistory.push({  x: new Date(ts), y: h });
+        }
+        refreshChart();
+        console.log(`[CSV] Loaded ${tempHistory.length} historical points`);
+      } catch (e) {
+        console.warn("[CSV] Could
